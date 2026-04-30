@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CPU Scheduler — FCFS Simulator</title>
+  <title>CPU Scheduler</title>
   <link
     href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap"
     rel="stylesheet" />
@@ -214,13 +214,13 @@
       margin-bottom: 1.2rem;
     }
 
-    .proc-row {
-      display: grid;
-      grid-template-columns: 48px 1fr 1fr 32px;
-      gap: 8px;
-      align-items: center;
-      animation: fadeIn 0.25s ease;
-    }
+   .proc-row {
+  display: grid;
+  grid-template-columns: 48px 1fr 1fr 1fr 32px; /* Added an extra 1fr */
+  gap: 8px;
+  align-items: center;
+  animation: fadeIn 0.25s ease;
+}
 
     @keyframes fadeIn {
       from {
@@ -275,11 +275,11 @@
     }
 
     .col-headers {
-      display: grid;
-      grid-template-columns: 48px 1fr 1fr 32px;
-      gap: 8px;
-      margin-bottom: 4px;
-    }
+  display: grid;
+  grid-template-columns: 48px 1fr 1fr 1fr 32px; /* Added an extra 1fr */
+  gap: 8px;
+  margin-bottom: 4px;
+}
 
     .del-btn {
       width: 32px;
@@ -729,7 +729,7 @@
         <div class="logo-group">
           <div class="logo-icon">CPU</div>
           <div>
-            <h1>FCFS <span>Scheduler</span></h1>
+            <h1>CPU <span>Simulator</span></h1>
             <div class="tagline">First Come · First Served · CPU Simulation</div>
           </div>
         </div>
@@ -743,10 +743,31 @@
       <!-- LEFT: Input -->
       <div class="card">
         <div class="card-title">Process Input</div>
+        <!-- Algorithm Selector -->
+        <div style="margin-bottom: 1.5rem;">
+          <label class="col-label" style="display:block; text-align:left; margin-bottom: 8px;">ALGORITHM</label>
+          <select id="algo-select" class="proc-input" style="margin-bottom: 10px; cursor: pointer;" onchange="toggleQuantum()">
+            <option value="1">FCFS (First Come First Served)</option>
+            <option value="2">SJF (Non-Preemptive)</option>
+            <option value="3">SRTF (SJF Preemptive)</option>
+            <option value="4">Priority (Non-Preemptive)</option>
+            <option value="5">Priority (Preemptive)</option>
+            <option value="6">Round Robin</option>
+          </select>
+          
+          <!-- Hidden by default, only shows for Round Robin -->
+          <div id="quantum-container" class="hidden">
+            <label class="col-label" style="display:block; text-align:left; margin-bottom: 8px;">TIME QUANTUM</label>
+            <input type="number" id="time-quantum" class="proc-input" value="2" min="1">
+          </div>
+        </div>
+
+        <!-- Updated Headers -->
         <div class="col-headers">
           <div></div>
           <div class="col-label">Arrival</div>
           <div class="col-label">Burst</div>
+          <div class="col-label">Priority</div>
           <div></div>
         </div>
         <div id="proc-list"></div>
@@ -848,9 +869,9 @@
 
     function pcolor(pid) { return PCOLORS[(pid - 1) % PCOLORS.length]; }
 
-    function addProcess(arr = '', burst = '') {
+    function addProcess(arr = '', burst = '', priority = 1) {
       const pid = pidCtr++;
-      processes.push({ pid, arr, burst });
+      processes.push({ pid, arr, burst, priority }); // Added priority here
       renderList();
     }
 
@@ -870,6 +891,7 @@
       <div class="proc-label" style="background:${c.bg};color:${c.text};border:1px solid ${c.border}">P${p.pid}</div>
       <input class="proc-input" type="number" min="0" placeholder="0" value="${p.arr}" id="arr-${p.pid}" />
       <input class="proc-input" type="number" min="1" placeholder="1" value="${p.burst}" id="burst-${p.pid}" />
+      <input class="proc-input" type="number" min="1" placeholder="1" value="${p.priority || 1}" id="prio-${p.pid}" />
       <button class="del-btn" onclick="removeProcess(${p.pid})">×</button>
     `;
         el.appendChild(row);
@@ -881,46 +903,109 @@
         pid: p.pid,
         arrival: Math.max(0, parseInt(document.getElementById('arr-' + p.pid).value) || 0),
         burst: Math.max(1, parseInt(document.getElementById('burst-' + p.pid).value) || 1),
+        priority: Math.max(1, parseInt(document.getElementById('prio-' + p.pid).value) || 1), // Grab priority from UI
         remaining: 0, start: -1, completion: 0, tat: 0, wt: 0
       }));
     }
 
-    function runFCFS() {
-      if (!processes.length) return;
-      stopAnim();
-      const procs = collect();
-      const sorted = [...procs].sort((a, b) => a.arrival !== b.arrival ? a.arrival - b.arrival : a.pid - b.pid);
+    async function runFCFS() {
+  const processes = collect();
+  if (processes.length === 0) return alert("Add processes first");
 
-      let time = 0;
-      const gantt = [], results = [];
-      animSteps = [];
+  // 1. Format input string for the C++ binary
+  let input = processes.length + "\n";
+  processes.forEach(p => {
+    input += `${p.arrival} ${p.burst} ${p.priority}\n`; // Send actual priority!
+  });
 
-      sorted.forEach(p => {
-        if (p.arrival > time) {
-          gantt.push({ label: 'IDLE', start: time, end: p.arrival, idle: true });
-          time = p.arrival;
+  // 2. Grab the selected algorithm
+  const algoChoice = document.getElementById('algo-select').value;
+  input += algoChoice + "\n";
+
+  // 3. If Round Robin (Choice 6), we MUST send the time quantum too
+  if (algoChoice === "6") {
+    const quantum = document.getElementById('time-quantum').value;
+    input += quantum + "\n";
+  }
+
+  try {
+    const res = await fetch("https://schedulix-simulator.onrender.com/schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input })
+    });
+
+    if (!res.ok) throw new Error("Backend connection failed");
+    
+    const data = await res.json();
+
+    // --- CLEAN THE OUTPUT ---
+    const cleanText = data.output.replace(/\x1b\[[0-9;]*m/g, '');
+    const lines = cleanText.split('\n');
+
+    // --- PARSE THE TEXT INTO ARRAYS ---
+    let isGantt = false, isTable = false;
+    const gantt = [], results = [];
+
+    for (let line of lines) {
+      if (line.includes('Gantt Chart')) { isGantt = true; isTable = false; continue; }
+      if (line.includes('Process Execution Table')) { isGantt = false; isTable = true; continue; }
+      if (line.startsWith('+')) continue;
+
+      // Parse Gantt Chart rows
+      if (isGantt && line.startsWith('|')) {
+        const parts = line.split('|').map(s => s.trim()).filter(s => s);
+        if (parts.length === 3 && parts[0] !== 'Process') { 
+          const proc = parts[0];
+          gantt.push({
+            pid: proc === 'IDLE' ? null : parseInt(proc.replace('P', '')),
+            idle: proc === 'IDLE',
+            label: proc,
+            start: parseInt(parts[1]),
+            end: parseInt(parts[2])
+          });
         }
-        const s = time; time += p.burst;
-        gantt.push({ label: 'P' + p.pid, start: s, end: time, pid: p.pid, idle: false });
-        p.start = s; p.completion = time; p.tat = time - p.arrival; p.wt = p.tat - p.burst;
-        results.push({ ...p });
-      });
+      }
 
-      buildAnimSteps(gantt, sorted, results);
-      renderGantt(gantt);
-      renderResults(results);
-
-      document.getElementById('anim-controls').style.display = 'flex';
-      document.getElementById('log-card').classList.remove('hidden');
-      document.getElementById('log-box').innerHTML = '';
-      document.getElementById('log-dot').style.display = 'inline-block';
-      ['gantt-card', 'metrics-card', 'results-card'].forEach(id => document.getElementById(id).classList.remove('hidden'));
-
-      stepIdx = -1;
-      showStep(0);
-      startAutoPlay();
+      // Parse Results Table rows
+      if (isTable && line.startsWith('|')) {
+        const parts = line.split('|').map(s => s.trim()).filter(s => s);
+        if (parts.length === 7 && parts[0] !== 'PID') { 
+          results.push({
+            pid: parseInt(parts[0]),
+            arrival: parseInt(parts[1]),
+            burst: parseInt(parts[2]),
+            priority: parseInt(parts[3]), // <-- We now grab Priority from the C++ table!
+            completion: parseInt(parts[4]),
+            tat: parseInt(parts[5]),
+            wt: parseInt(parts[6]),
+            // For preemptive algorithms, Start time varies, but we'll use the first Gantt appearance in the render function later if needed
+            start: parseInt(parts[1]) + parseInt(parts[6]) 
+          });
+        }
+      }
     }
 
+    // --- UPDATE THE UI ---
+    ['gantt-card', 'metrics-card', 'results-card', 'log-card'].forEach(id => {
+      document.getElementById(id).classList.remove('hidden');
+    });
+    document.getElementById('anim-controls').style.display = 'flex';
+    document.getElementById('log-box').innerHTML = '';
+
+    const sortedProcs = processes.slice().sort((a, b) => a.arrival - b.arrival);
+    renderGantt(gantt);
+    renderResults(results);
+    buildAnimSteps(gantt, sortedProcs, results);
+    
+    stepIdx = -1;
+    showStep(0);
+
+  } catch (err) {
+    console.error("Fetch Error:", err);
+    alert("Could not connect to backend. Is it awake?");
+  }
+}
     function buildAnimSteps(gantt, sorted, results) {
       animSteps = [];
       const total = gantt[gantt.length - 1].end;
@@ -1084,18 +1169,22 @@
   `;
 
       const tbl = document.getElementById('result-table');
+      // Added Priority to the Table Headers
       tbl.innerHTML = `<thead><tr>
-    <th>PID</th><th>Arrival</th><th>Burst</th><th>Start</th>
+    <th>PID</th><th>Arrival</th><th>Burst</th><th>Priority</th><th>Start</th>
     <th>Completion</th><th>Turnaround</th><th>Waiting</th>
   </tr></thead>`;
+      
       const tbody = document.createElement('tbody');
       results.forEach(r => {
         const c = pcolor(r.pid);
         const tr = document.createElement('tr');
+        // Added the Priority cell data
         tr.innerHTML = `
       <td><span class="proc-label" style="background:${c.bg};color:${c.text};border:1px solid ${c.border};padding:3px 10px">P${r.pid}</span></td>
       <td style="color:var(--muted)">${r.arrival}</td>
       <td style="color:var(--muted)">${r.burst}</td>
+      <td style="color:#ffc94a; font-weight:bold;">${r.priority}</td>
       <td>${r.start}</td>
       <td style="color:var(--accent2)">${r.completion}</td>
       <td style="color:${r.tat > maxTAT * 0.75 ? 'var(--accent3)' : 'var(--text)'}">${r.tat}</td>
