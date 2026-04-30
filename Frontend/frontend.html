@@ -851,6 +851,15 @@
   </div>
 
   <script>
+    function toggleQuantum() {
+  const algo = document.getElementById('algo-select').value;
+  const qContainer = document.getElementById('quantum-container');
+  if (algo === "6") {
+    qContainer.classList.remove('hidden');
+  } else {
+    qContainer.classList.add('hidden');
+  }
+}
     const PCOLORS = [
       { bg: 'rgba(108,99,255,0.18)', border: 'rgba(108,99,255,0.6)', text: '#a59fff' },
       { bg: 'rgba(0,212,170,0.15)', border: 'rgba(0,212,170,0.6)', text: '#00d4aa' },
