@@ -4,9 +4,7 @@ const { exec } = require("child_process");
 
 const app = express();
 
-app.use(cors({
-  origin: "https://schedulix-simulator.netlify.app" // Put your actual Netlify URL here
-}));
+app.use(cors());
 app.use(express.json());
 
 app.post("/schedule", (req, res) => {
