@@ -6,14 +6,25 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-
 app.post("/schedule", (req, res) => {
   const input = req.body.input;
 
+  console.log("Schedule request received");
+
   const process = exec("./scheduler", (error, stdout, stderr) => {
+
+    console.log("STDOUT:", stdout);
+    console.log("STDERR:", stderr);
+
     if (error) {
-      return res.json({ error: error.message });
+      console.log("EXEC ERROR:", error);
+
+      return res.json({
+        error: error.message,
+        stderr: stderr
+      });
     }
+
     res.json({ output: stdout });
   });
 
